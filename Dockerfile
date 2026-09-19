@@ -17,7 +17,12 @@ COPY go.mod ./
 COPY cmd ./cmd
 COPY internal ./internal
 COPY web ./web
-RUN go build -trimpath -ldflags="-s -w" -o /out/chorus ./cmd/chorus
+# 交叉编译：buildx 会按目标平台注入这两个参数（默认等于构建机架构），
+# 这样 arm64 镜像不需要在 QEMU 里跑整个 Go 工具链。
+ARG TARGETOS
+ARG TARGETARCH
+RUN GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH:-amd64} \
+    go build -trimpath -ldflags="-s -w" -o /out/chorus ./cmd/chorus
 
 FROM alpine:3.20 AS runtime
 RUN apk add --no-cache tzdata ca-certificates \
