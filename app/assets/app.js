@@ -110,6 +110,12 @@ function avatar(member, size) {
 }
 
 function memberById(id) { return state.members.find((m) => m.id === id) || null }
+/** 把服务端返回的 error.message 拼进提示，避免「添加失败」这种看不出原因的静默失败。 */
+function errText(e, fallback) {
+  const msg = (e && e.detail && e.detail.error && e.detail.error.message) || ''
+  return msg ? fallback + '（' + msg + '）' : fallback
+}
+
 function toast(text) {
   const node = el('div', { class: 'toast', text })
   document.body.append(node)
@@ -157,13 +163,17 @@ async function shrinkToBase64(file) {
   return { content_type: 'image/jpeg', data_base64: comma >= 0 ? String(out).slice(comma + 1) : String(out) }
 }
 
-async function uploadAvatar(member, file) {
+async function uploadAvatar(member, file, base) {
   try {
     const payload = await shrinkToBase64(file)
+    // base 由调用方决定：/admin 页传 '/admin/members'（管理员 Cookie）；主应用不传 → 成员路由。
+    const path = (base || '/members') + '/' + member.id + '/avatar'
     try {
-      await api('/members/' + member.id + '/avatar', { method: 'PUT', body: JSON.stringify(payload) })
+      await api(path, { method: 'PUT', body: JSON.stringify(payload) })
     } catch (e) {
-      if (e.status !== 404 && e.status !== 405) throw e
+      // 只在主应用（成员 Cookie）且老后端没有成员路由时才回落。
+      // 401 不能被当成「后端没有这条路由」——那正是管理页静默失败的根因。
+      if (base || (e.status !== 404 && e.status !== 405)) throw e
       await api('/admin/members/' + member.id + '/avatar', { method: 'PUT', body: JSON.stringify(payload) })
     }
     const m = memberById(member.id)
@@ -171,7 +181,7 @@ async function uploadAvatar(member, file) {
     toast('已更新头像')
     return true
   } catch (e) {
-    toast(e.status === 413 ? '图片太大' : e.status === 415 ? '只支持 JPG/PNG' : '上传失败')
+    toast(e.status === 413 ? '图片太大' : e.status === 415 ? '只支持 JPG/PNG' : errText(e, '上传失败'))
     return false
   }
 }
@@ -854,24 +864,16 @@ function renderAdmin() {
     const av = avatar(m, 'avatar-sm')
     av.setAttribute('title', '点头像更换')
     av.addEventListener('click', () => pickAvatarFile(async (file) => {
-      const okDone = await uploadAvatar(m, file)
+      const okDone = await uploadAvatar(m, file, '/admin/members')
       if (okDone) renderAdmin()
     }))
     const save = el('button', {
       class: 'btn-plain', type: 'button', text: '保存',
       onclick: async () => {
         try {
-          await api('/members/' + m.id, { method: 'PATCH', body: JSON.stringify({ name: nameInput.value }) })
+          await api('/admin/members/' + m.id, { method: 'PATCH', body: JSON.stringify({ name: nameInput.value }) })
           toast('已保存'); await boot(); renderAdmin()
-        } catch (e) {
-          if (e.status === 404 || e.status === 405) {
-            try {
-              await api('/admin/members/' + m.id, { method: 'PATCH', body: JSON.stringify({ name: nameInput.value }) })
-              toast('已保存'); await boot(); renderAdmin(); return
-            } catch (e2) { toast('保存失败'); return }
-          }
-          toast('保存失败')
-        }
+        } catch (e) { toast(errText(e, '保存失败')) }
       },
     })
     membersCard.append(el('div', { class: 'admin-row' }, [av, nameInput, save]))
@@ -881,16 +883,11 @@ function renderAdmin() {
   const colorInput = el('input', { class: 'input-line', placeholder: '#0A84FF' })
   const addMember = async () => {
     const body = JSON.stringify({ name: nameInput.value, avatar: avatarInput.value || undefined, color: colorInput.value || undefined })
-    try {
-      await api('/members', { method: 'POST', body })
-    } catch (e) {
-      if (e.status === 404 || e.status === 405) await api('/admin/members', { method: 'POST', body })
-      else throw e
-    }
+    await api('/admin/members', { method: 'POST', body })
     toast('已添加'); await boot(); renderAdmin()
   }
   membersCard.append(el('div', { class: 'admin-form' }, [nameInput, avatarInput, colorInput,
-    el('button', { class: 'btn-plain', type: 'button', text: '添加', onclick: () => addMember().catch(() => toast('添加失败')) }),
+    el('button', { class: 'btn-plain', type: 'button', text: '添加', onclick: () => addMember().catch((e) => toast(errText(e, '添加失败'))) }),
   ]))
   wrap.append(membersCard)
 
@@ -900,29 +897,26 @@ function renderAdmin() {
     const gi = el('input', { class: 'input-line', value: g.name })
     const rename = async () => {
       const body = JSON.stringify({ name: gi.value })
-      try { await api('/groups/' + g.id, { method: 'PATCH', body }) }
-      catch (e) { if (e.status === 404 || e.status === 405) await api('/admin/groups/' + g.id, { method: 'PATCH', body }); else throw e }
+      await api('/admin/groups/' + g.id, { method: 'PATCH', body })
       toast('已保存'); await boot(); renderAdmin()
     }
     const del = async () => {
-      try { await api('/groups/' + g.id, { method: 'DELETE' }) }
-      catch (e) { if (e.status === 404 || e.status === 405) await api('/admin/groups/' + g.id, { method: 'DELETE' }); else throw e }
+      await api('/admin/groups/' + g.id, { method: 'DELETE' })
       toast('已删除'); await boot(); renderAdmin()
     }
     groupsCard.append(el('div', { class: 'admin-row' }, [gi,
-      el('button', { class: 'btn-plain', type: 'button', text: '保存', onclick: () => rename().catch(() => toast('保存失败')) }),
-      el('button', { class: 'btn-plain', type: 'button', text: '删除', onclick: () => del().catch(() => toast('删除失败')) }),
+      el('button', { class: 'btn-plain', type: 'button', text: '保存', onclick: () => rename().catch((e) => toast(errText(e, '保存失败'))) }),
+      el('button', { class: 'btn-plain', type: 'button', text: '删除', onclick: () => del().catch((e) => toast(errText(e, '删除失败'))) }),
     ]))
   }
   const groupInput = el('input', { class: 'input-line', placeholder: '分组名字' })
   const addGroup = async () => {
     const body = JSON.stringify({ name: groupInput.value })
-    try { await api('/groups', { method: 'POST', body }) }
-    catch (e) { if (e.status === 404 || e.status === 405) await api('/admin/groups', { method: 'POST', body }); else throw e }
+    await api('/admin/groups', { method: 'POST', body })
     toast('已添加'); await boot(); renderAdmin()
   }
   groupsCard.append(el('div', { class: 'admin-form' }, [groupInput,
-    el('button', { class: 'btn-plain', type: 'button', text: '添加', onclick: () => addGroup().catch(() => toast('添加失败')) }),
+    el('button', { class: 'btn-plain', type: 'button', text: '添加', onclick: () => addGroup().catch((e) => toast(errText(e, '添加失败'))) }),
   ]))
   wrap.append(groupsCard)
 
