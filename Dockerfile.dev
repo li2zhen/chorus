@@ -1,0 +1,20 @@
+# 开发镜像：alpine + 项目内自带的 Go 工具链，源码用 bind mount 挂进来，改完自动重启。
+# 依赖只有 ./vendor/go.linux-amd64.tar.gz 和本地 alpine:3.20 镜像，不连 Docker Hub。
+FROM alpine:3.20
+
+RUN apk add --no-cache bash tzdata git curl
+COPY vendor/go.linux-amd64.tar.gz /tmp/go.tgz
+RUN tar -C /usr/local -xzf /tmp/go.tgz && rm -f /tmp/go.tgz
+
+ENV PATH=/usr/local/go/bin:$PATH \
+    CGO_ENABLED=0 \
+    GOFLAGS=-mod=mod \
+    GOTOOLCHAIN=local \
+    GOCACHE=/go-cache \
+    GOMODCACHE=/go/pkg/mod \
+    TZ=Asia/Shanghai
+
+RUN mkdir -p /go-cache /go/pkg/mod
+WORKDIR /app
+EXPOSE 2022
+CMD ["bash", "scripts/dev-watch.sh"]

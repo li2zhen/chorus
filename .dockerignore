@@ -1,0 +1,6 @@
+data/
+.air/
+.git/
+test/_out.txt
+test/_err.txt
+*.log
