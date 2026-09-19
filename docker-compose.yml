@@ -1,4 +1,4 @@
-# 本项目**唯一**的 docker 入口，所有东西都待在 D:\docker\chores 里：
+# 本项目**唯一**的 docker 入口，所有东西都待在 D:\docker\chorus 里：
 #   ./            本项目入口（compose / Dockerfile / 脚本 / go.mod）
 #   ./web         前端（原生 ES 模块 + 一份 CSS，零构建）
 #   ./internal    Go 后端
@@ -26,9 +26,9 @@ services:
     ports:
       - "127.0.0.1:2022:2022"
     environment:
-      CHORES_ADDR: ":2022"
-      CHORES_DB: "/data/chorus.db"
-      CHORES_ADMIN_TOKEN: "0317"
+      CHORUS_ADDR: ":2022"
+      CHORUS_DB: "/data/chorus.db"
+      CHORUS_ADMIN_TOKEN: "0317"
       TZ: "Asia/Shanghai"
     volumes:
       - .:/app
@@ -48,9 +48,9 @@ services:
     ports:
       - "0.0.0.0:2022:2022"
     environment:
-      CHORES_ADDR: ":2022"
-      CHORES_DB: "/data/chorus.db"
-      CHORES_ADMIN_TOKEN: "0317"
+      CHORUS_ADDR: ":2022"
+      CHORUS_DB: "/data/chorus.db"
+      CHORUS_ADMIN_TOKEN: "0317"
       TZ: "Asia/Shanghai"
     volumes:
       # 生产用命名卷（首次创建会继承镜像里 /data 的属主，非 root 用户可写）。
@@ -70,9 +70,9 @@ services:
     ports:
       - "127.0.0.1:2023:2022"
     environment:
-      CHORES_ADDR: ":2022"
-      CHORES_DB: "/data/chorus.db"
-      CHORES_ADMIN_TOKEN: "0317"
+      CHORUS_ADDR: ":2022"
+      CHORUS_DB: "/data/chorus.db"
+      CHORUS_ADMIN_TOKEN: "0317"
       TZ: "Asia/Shanghai"
     volumes:
       - prod-check-data:/data

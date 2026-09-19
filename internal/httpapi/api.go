@@ -12,7 +12,6 @@ import (
 	"fmt"
 	"log"
 	"net/http"
-	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -193,13 +192,11 @@ func withCORS(next http.Handler) http.Handler {
 	})
 }
 
-// adminToken 取环境变量，默认 admin（README 的默认值）。
+// adminToken 返回 /admin 的口令。
+// 环境变量只在 internal/config 里读一次，这里只做"注入值 + 兜底默认"。
 func (a *API) adminToken() string {
 	if a.deps.AdminToken != "" {
 		return a.deps.AdminToken
-	}
-	if v := strings.TrimSpace(os.Getenv("CHORES_ADMIN_TOKEN")); v != "" {
-		return v
 	}
 	return "admin"
 }

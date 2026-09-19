@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"chores/internal/config"
 	"chores/internal/httpapi"
 	"chores/internal/store"
 	"chores/web"
@@ -22,10 +23,9 @@ import (
 var version = "dev"
 
 func main() {
-	addr := env("CHORES_ADDR", ":2022")
-	dbPath := env("CHORES_DB", "/data/chores.db")
-	adminToken := env("CHORES_ADMIN_TOKEN", "admin")
-	tzName := env("TZ", "Asia/Shanghai")
+	// 环境变量只在这里读一次（见 internal/config）。
+	cfg := config.Load()
+	addr, dbPath, adminToken, tzName := cfg.Addr, cfg.DBPath, cfg.AdminToken, cfg.TZ
 
 	loc, err := time.LoadLocation(tzName)
 	if err != nil {

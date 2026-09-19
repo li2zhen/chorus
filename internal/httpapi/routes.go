@@ -57,6 +57,7 @@ func (a *API) Register(mux *http.ServeMux) {
 		"GET /api/admin/members":         a.getAdminMembersCompat,
 		"GET /api/admin/export":          a.getAdminExport,
 		"POST /api/admin/seed":           a.postAdminSeed,
+		"POST /api/admin/reset":          a.postAdminReset,
 	}
 	for pattern, handler := range routes {
 		mux.Handle(pattern, withCORS(http.HandlerFunc(handler)))

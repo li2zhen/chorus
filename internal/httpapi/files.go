@@ -43,3 +43,18 @@ func (a *API) postAdminSeed(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"result": result})
 }
+
+// postAdminReset 把数据重置为"刚安装"状态（发布前的"清空数据"按钮打它）。
+//
+// 与 seed 是配套的一对：seed 写入演示数据 → 看完 reset 清掉。
+// 幂等：库本来就是空的也返回 200，前端不用区分首次与再次点击。
+func (a *API) postAdminReset(w http.ResponseWriter, r *http.Request) {
+	if !a.requireAdmin(w, r) {
+		return
+	}
+	if err := a.deps.Store.Reset(); err != nil {
+		writeDomainError(w, err, nil)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"result": map[string]any{"reset": true}})
+}

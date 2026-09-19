@@ -26,9 +26,9 @@ docker compose --profile prod up -d --build     # 生产模式，镜像约 24 MB
 
 首次打开是登录页但还没有成员：点左下角**管理** → 用管理员口令进 `/admin` → 添加家庭成员 → 回首页点头像进入。
 
-管理员口令默认 `0317`（写在 `docker-compose.yml` 的 `CHORES_ADMIN_TOKEN`，**上线前请改掉**）。
+管理员口令默认 `0317`（写在 `docker-compose.yml` 的 `CHORUS_ADMIN_TOKEN`，**上线前请改掉**）。
 
-想先看效果：进 `/admin` 点「写入演示数据」（4 个成员 / 2 个分组 / 6 个任务 / 整月实例），看完点「清空数据」。
+想先看效果：进 `/admin` 点「写入演示数据」（4 个成员 / 2 个分组 / 6 个任务 / 整月实例），看完点「清空数据」（对应 `POST /api/admin/reset`，幂等、不删数据文件）。
 
 ---
 
@@ -88,9 +88,9 @@ Invoke-WebRequest -Uri "https://mirrors.aliyun.com/golang/go1.24.6.linux-amd64.t
 
 | 环境变量 | 默认 | 说明 |
 |---|---|---|
-| `CHORES_ADDR` | `:2022` | 监听地址 |
-| `CHORES_DB` | `/data/chorus.db` | 数据文件路径 |
-| `CHORES_ADMIN_TOKEN` | 镜像内 `admin`；compose 里 `0317` | `/admin` 口令 |
+| `CHORUS_ADDR` | `:2022` | 监听地址 |
+| `CHORUS_DB` | `/data/chorus.db` | 数据文件路径 |
+| `CHORUS_ADMIN_TOKEN` | 镜像内 `admin`；compose 里 `0317` | `/admin` 口令（老名字 `CHORES_*` 仍兼容，优先读 `CHORUS_*`） |
 | `TZ` | `Asia/Shanghai` | 循环任务按此时区判断「今天」 |
 
 **备份**：整个数据库就是一个文件，拷走即备份；界面 `/admin → 导出数据库` 也行。
@@ -117,7 +117,7 @@ services:
     volumes:
       - ./data:/data
     environment:
-      - CHORES_ADMIN_TOKEN=改成你自己的口令
+      - CHORUS_ADMIN_TOKEN=改成你自己的口令
       - TZ=Asia/Shanghai
 ```
 

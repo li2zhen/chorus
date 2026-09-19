@@ -254,3 +254,16 @@ v2 上线后挂了 3 条。我按**以 UI 为准**的原则更新了断言，并
 - 确认空态**仍保留导航**（‹ 9月19日 星期六 › 可回今天）——不是死路
 
 结果：`node test/ui-shim.mjs web/assets/app.js` → **ALL PASS（50 条）**；`test/integration.mjs` → **51 passed / 0 failed**。
+## 跑验收脚本的顺序（踩过的坑）
+
+`scripts/backend-*.mjs` 与 `test/integration.mjs` 假定**库里有演示数据**。空库（发布状态）直接跑会误报若干条失败。正确顺序：
+
+```bash
+# 1) 先写入演示数据（管理员口令见 compose 的 CHORUS_ADMIN_TOKEN）
+curl -X POST -b "chores_admin=1" localhost:2022/api/admin/seed
+# 2) 跑全部验收脚本
+node scripts/backend-check.mjs && node scripts/backend-verify.mjs && node scripts/backend-v2-check.mjs \
+  && node test/integration.mjs && node test/ui-shim.mjs web/assets/app.js && node test/reset-check.mjs
+# 3) 收尾清空，回到发布状态
+curl -X POST -b "chores_admin=1" localhost:2022/api/admin/reset
+```
