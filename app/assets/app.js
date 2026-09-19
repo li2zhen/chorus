@@ -13,6 +13,7 @@ const state = {
   members: [],
   groups: [],
   instances: [],
+  chores: [], // 任务定义（编辑循环任务时要拿它的循环规则）
   loadedFrom: null, // 已加载实例的日期范围（用于窗口外增量补齐）
   loadedTo: null,
   timeDefaults: { duration_minutes: 10, start_at_local: null },
@@ -252,7 +253,7 @@ function openSheet(title, fields, onSubmitText, onSubmit, options = {}) {
   }
   mask.addEventListener('click', close)
   if (options.dismissable !== false) {
-    sheet.append(el('button', { class: 'btn btn-ghost btn-block', type: 'button', text: '关闭', style: 'margin-top:8px', onclick: close }))
+    sheet.append(el('button', { class: 'btn btn-ghost btn-block', type: 'button', text: options.closeText || '关闭', style: 'margin-top:8px', onclick: close }))
   }
   document.body.append(mask, sheet)
   requestAnimationFrame(() => { mask.classList.add('open'); sheet.classList.add('open') })
@@ -419,7 +420,18 @@ function renderRow(inst) {
   } else if (inst.state === 'done') {
     actions.append(el('button', { class: 'btn btn-ghost check', type: 'button', text: '✓', title: '撤销完成', onclick: () => act(inst, 'uncomplete') }))
   }
+  // 行尾「更多」：编辑 / 改期 / 删除（44px 热区）
+  const more = el('button', { class: 'row-more', type: 'button', title: '更多', text: '···', 'aria-label': '更多操作', 'data-more': String(inst.id) })
+  more.addEventListener('click', (ev) => { if (ev && ev.stopPropagation) ev.stopPropagation(); openRowMenu(inst) })
+  actions.append(more)
   row.append(actions)
+
+  // 长按整行也打开同一个菜单（移动端更自然）
+  let pressTimer = null
+  const cancelPress = () => { if (pressTimer) { clearTimeout(pressTimer); pressTimer = null } }
+  row.addEventListener('touchstart', () => { cancelPress(); pressTimer = setTimeout(() => { pressTimer = null; openRowMenu(inst) }, 450) }, { passive: true })
+  row.addEventListener('touchend', cancelPress, { passive: true })
+  row.addEventListener('touchmove', cancelPress, { passive: true })
   return row
 }
 
@@ -756,23 +768,54 @@ function resolveTime(raw) {
   return { error: '时间需要给两个：开始/时长/结束' }
 }
 
-function openCompose() {
+/* ── 发布 / 编辑 表单（同一个抽屉，两种提交） ─────────────── */
+/** 任务定义（循环规则在定义上，不在实例上）；按需拉一次并缓存。 */
+async function loadChores() {
+  try {
+    const data = await api('/chores')
+    state.chores = (data && data.chores) || []
+  } catch { state.chores = state.chores || [] }
+  return state.chores
+}
+function choreOf(inst) {
+  if (!inst || inst.chore_id == null) return null
+  return (state.chores || []).find((c) => c.id === inst.chore_id) || null
+}
+
+/**
+ * 打开表单抽屉。
+ * options.mode = 'create' | 'edit'；options.inst 为编辑时的实例。
+ * 编辑走 PATCH /api/chores/{chore_id}（整个系列）；单次实例走 PATCH /api/instances/{id}。
+ */
+async function openChoreSheet(options = {}) {
+  const inst = options.inst || null
+  const isEdit = options.mode === 'edit' && inst
+  if (isEdit && inst.chore_id != null && !(state.chores || []).length) await loadChores()
+  const def = isEdit ? choreOf(inst) : null
+
   const localNow = toLocalInput(new Date())
-  const defaultStart = state.timeDefaults.start_at_local || localNow
+  const defaultStart = isEdit && inst.start_at ? toLocalInput(new Date(inst.start_at)) : (state.timeDefaults.start_at_local || localNow)
   const draft = {
-    title: '', note: '', group_id: state.groups.length ? state.groups[0].id : null,
-    recurrence: 'none', member_id: null, due_date: todayKey(),
-    time: { start: defaultStart, duration: String(state.timeDefaults.duration_minutes || DEFAULT_MINUTES), end: '' },
+    title: (isEdit && inst.title) || '',
+    note: (isEdit && inst.note) || '',
+    group_id: isEdit ? inst.group_id : (state.groups.length ? state.groups[0].id : null),
+    recurrence: (def && def.recurrence) || 'none',
+    member_id: (def && def.member_id != null) ? def.member_id : null,
+    due_date: (isEdit && inst.due_date) || todayKey(),
+    time: {
+      start: defaultStart,
+      duration: String((isEdit && inst.duration_minutes) || state.timeDefaults.duration_minutes || DEFAULT_MINUTES),
+      end: '',
+    },
     defaultStart,
   }
-  // 初始：给「开始 + 时长」，结束自动算出
   {
     const start = fromLocalInput(draft.time.start)
     const dur = Number(draft.time.duration) || DEFAULT_MINUTES
     if (start) draft.time.end = toLocalInput(new Date(start.getTime() + dur * 60000))
   }
 
-  const titleInput = el('input', { class: 'input', placeholder: '要做什么', autofocus: true, maxlength: '60' })
+  const titleInput = el('input', { class: 'input', placeholder: '要做什么', autofocus: true, maxlength: '60', value: draft.title })
   titleInput.addEventListener('input', () => { draft.title = titleInput.value })
 
   const groupPills = el('div', { class: 'pills' }, state.groups.map((g) =>
@@ -790,14 +833,14 @@ function openCompose() {
   ))
 
   const people = el('div', { class: 'people' })
-  const anyBtn = el('button', { class: 'person', type: 'button', 'aria-pressed': 'true' }, [
+  const anyBtn = el('button', { class: 'person', type: 'button', 'aria-pressed': draft.member_id == null ? 'true' : 'false' }, [
     el('div', { class: 'avatar', text: '谁', style: 'background:var(--text-3)' }),
     el('span', { class: 'person-name', text: '都可以' }),
   ])
   anyBtn.addEventListener('click', () => { draft.member_id = null; markPeople(null) })
   people.append(anyBtn)
   for (const m of state.members) {
-    const btn = el('button', { class: 'person', type: 'button', 'aria-pressed': 'false' }, [avatar(m), el('span', { class: 'person-name', text: m.name })])
+    const btn = el('button', { class: 'person', type: 'button', 'aria-pressed': draft.member_id === m.id ? 'true' : 'false' }, [avatar(m), el('span', { class: 'person-name', text: m.name })])
     btn.addEventListener('click', () => { draft.member_id = m.id; markPeople(m.id) })
     people.append(btn)
   }
@@ -806,7 +849,7 @@ function openCompose() {
     ;[...people.children].forEach((node, i) => node.setAttribute('aria-pressed', ids[i] === id ? 'true' : 'false'))
   }
 
-  const noteInput = el('input', { class: 'input-line', placeholder: '备注', maxlength: '120' })
+  const noteInput = el('input', { class: 'input-line', placeholder: '备注', maxlength: '120', value: draft.note })
   noteInput.addEventListener('input', () => { draft.note = noteInput.value })
 
   /* 时间三选二 */
@@ -867,22 +910,33 @@ function openCompose() {
     more,
   ]
 
-  const sheet = openSheet(null, fields, '发布', async () => {
+  const sheet = openSheet(null, fields, isEdit ? '保存' : '发布', async () => {
     const title = draft.title.trim()
     if (!title) { titleInput.focus(); return }
     const time = resolveTime(draft.time)
     if (time.error) { toast(time.error); return }
+    const base = {
+      title, note: draft.note || undefined, group_id: draft.group_id,
+      member_id: draft.member_id, requires_claim: true,
+      start_at: time.start_at, duration_minutes: time.duration_minutes, end_at: time.end_at,
+    }
     try {
-      const base = {
-        title, note: draft.note || undefined, group_id: draft.group_id,
-        member_id: draft.member_id, requires_claim: true,
-        start_at: time.start_at, duration_minutes: time.duration_minutes, end_at: time.end_at,
-      }
-      let created = null
-      if (draft.recurrence === 'none') {
-        created = await api('/instances', { method: 'POST', body: JSON.stringify(Object.assign({ due_date: draft.due_date }, base)) })
+      if (isEdit && inst.chore_id != null) {
+        await api('/chores/' + inst.chore_id, {
+          method: 'PATCH',
+          body: JSON.stringify(Object.assign({}, base, {
+            recurrence: draft.recurrence,
+            weekday: fromKey(inst.due_date).getDay(),
+            day_of_month: fromKey(inst.due_date).getDate(),
+          })),
+        })
+      } else if (isEdit) {
+        await api('/instances/' + inst.id, { method: 'PATCH', body: JSON.stringify({ title, note: draft.note || undefined, group_id: draft.group_id }) })
+      } else if (draft.recurrence === 'none') {
+        const created = await api('/instances', { method: 'POST', body: JSON.stringify(Object.assign({ due_date: draft.due_date }, base)) })
+        if (created && created.id && created.due_date) replaceInstance(created)
       } else {
-        created = await api('/chores', {
+        await api('/chores', {
           method: 'POST',
           body: JSON.stringify(Object.assign({}, base, {
             recurrence: draft.recurrence,
@@ -892,16 +946,68 @@ function openCompose() {
           })),
         })
       }
-      if (created && created.id && created.due_date) replaceInstance(created)
-      else await refresh()
       sheet.close()
-      toast('已发布')
+      await boot()
+      toast(isEdit ? '已保存' : '已发布')
     } catch (e) {
-      toast(e.status === 501 ? '后端未就绪' : e.status === 400 ? '时间需要给两个：开始/时长/结束' : '发布失败')
+      toast(errText(e, isEdit ? '保存失败' : '发布失败'))
     }
   })
   submitBtn = sheet.submitBtn
   sync('init')
+}
+
+function openCompose() { void openChoreSheet({ mode: 'create' }) }
+
+/* ── 行内「更多」：编辑 / 改期 / 删除 ───────────────────── */
+function openRowMenu(inst) {
+  const menuItem = (label, danger, onPick) => {
+    const btn = el('button', { class: 'menu-item' + (danger ? ' danger' : ''), type: 'button', text: label })
+    btn.addEventListener('click', onPick)
+    return btn
+  }
+  let sheet = null
+  const pick = (fn) => () => { sheet.close(); fn() }
+  const menu = el('div', { class: 'menu' }, [
+    menuItem('编辑', false, pick(() => void openChoreSheet({ mode: 'edit', inst }))),
+    menuItem('改期', false, pick(() => openRescheduleSheet(inst))),
+    menuItem('删除', true, pick(() => confirmDeleteInstance(inst))),
+  ])
+  sheet = openSheet(null, [menu], null, null)
+  return sheet
+}
+
+/** 改期：只改这一天（POST /api/instances/{id}/reschedule）。 */
+function openRescheduleSheet(inst) {
+  const input = el('input', { class: 'input-line', type: 'date', 'data-role': 'due-date', value: inst.due_date })
+  const sheet = openSheet('改到哪一天', [el('div', { class: 'field' }, [input])], '保存', async () => {
+    if (!input.value) return
+    try {
+      await api('/instances/' + inst.id + '/reschedule', { method: 'POST', body: JSON.stringify({ due_date: input.value }) })
+      sheet.close()
+      await boot()
+      toast('已改期')
+    } catch (e) { toast(errText(e, '改期失败')) }
+  })
+  return sheet
+}
+
+/** 删除：二次确认，文案说清影响范围（系列 vs 单次）。 */
+function confirmDeleteInstance(inst) {
+  const series = inst.chore_id != null
+  const text = series
+    ? '删除这个系列？会移除全部每天/每周的实例，包括已完成记录'
+    : '删除这次任务？'
+  const sheet = openSheet(null, [el('p', { class: 'confirm-text', text })], '删除', async () => {
+    try {
+      if (series) await api('/chores/' + inst.chore_id, { method: 'DELETE' })
+      else await api('/instances/' + inst.id, { method: 'DELETE' })
+      sheet.close()
+      await boot()
+      toast('已删除')
+    } catch (e) { toast(errText(e, '删除失败')) }
+  }, { closeText: '取消' })
+  return sheet
 }
 
 /* ── 大屏模式 /?tv=1 ──────────────────────────────────── */

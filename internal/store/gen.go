@@ -54,6 +54,8 @@ func (d *DB) generateLocked(nowT time.Time) error {
 	existing := make(map[string]bool, len(d.file.Instances))
 	for _, inst := range d.file.Instances {
 		if inst.ChoreID != nil {
+			// v5：已删除（archived）的实例也算"这天已经有过了"，
+			// 否则删掉某天的循环实例会在下一轮重新冒出来。
 			existing[key(*inst.ChoreID, inst.DueDate)] = true
 		}
 	}

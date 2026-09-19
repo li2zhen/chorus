@@ -43,7 +43,16 @@ func (d *DB) CreateChore(in ChoreInput) (Chore, error) {
 	return c, nil
 }
 
-// UpdateChore 局部更新；recurrence 变更只影响未来实例。
+// UpdateChore 局部更新（v5 语义）。
+//
+//   - title / note / group_id（以及 requires_*）→ 更新定义 **+ 该系列全部实例**，
+//     包括今天的、将来的，也包括已完成的——用户改了名字，整条系列都该跟着改；
+//   - recurrence / weekday / day_of_month / start_date → 更新定义；未来日期里
+//     **不再符合新规则**的实例会被标记删除，避免"改成每周了，旧的每天实例还留着"；
+//   - 时间模板（start_at/end_at/duration_minutes）→ 定义 + 该系列实例同步，
+//     每个实例按自己的 due_date 平移（同本地时刻）。
+//
+// 定义只按 remaining 字段改，未传的字段沿用旧值（PATCH 语义）。
 func (d *DB) UpdateChore(id int64, in ChoreInput) (Chore, error) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
@@ -66,12 +75,14 @@ func (d *DB) UpdateChore(id int64, in ChoreInput) (Chore, error) {
 	updated.Archived = d.file.Chores[idx].Archived
 	changedRecurrence := updated.Recurrence != d.file.Chores[idx].Recurrence ||
 		!samePtr(updated.Weekday, d.file.Chores[idx].Weekday) ||
-		!samePtr(updated.DayOfMonth, d.file.Chores[idx].DayOfMonth)
+		!samePtr(updated.DayOfMonth, d.file.Chores[idx].DayOfMonth) ||
+		updated.StartDate != d.file.Chores[idx].StartDate
 	d.file.Chores[idx] = updated
-	// 未完成的实例跟随新标题/备注/分组/负责人（历史已完成的不动）
+
+	// 1) 改名/备注/分组/要求 → 整条系列同步（已完成的历史也改，保持视图一致）
 	for i := range d.file.Instances {
 		inst := &d.file.Instances[i]
-		if inst.ChoreID == nil || *inst.ChoreID != id || inst.State == "done" {
+		if inst.Archived || inst.ChoreID == nil || *inst.ChoreID != id {
 			continue
 		}
 		inst.Title = updated.Title
@@ -80,27 +91,84 @@ func (d *DB) UpdateChore(id int64, in ChoreInput) (Chore, error) {
 		inst.RequiresClaim = updated.RequiresClaim
 		inst.RequiresPhoto = updated.RequiresPhoto
 	}
+
+	// 2) 规则变了 → 清掉未来日期里不再匹配的实例（已完成的保留，历史不该被改写）
+	if changedRecurrence {
+		today := d.timeNowDate()
+		for i := range d.file.Instances {
+			inst := &d.file.Instances[i]
+			if inst.Archived || inst.ChoreID == nil || *inst.ChoreID != id {
+				continue
+			}
+			if inst.DueDate <= today || inst.State == "done" {
+				continue
+			}
+			if !d.matchesRecurrenceDate(&updated, inst.DueDate) {
+				inst.Archived = true
+			}
+		}
+	}
+
+	// 3) 时间模板变了 → 系列实例按各自 due_date 重新平移
+	for i := range d.file.Instances {
+		inst := &d.file.Instances[i]
+		if inst.Archived || inst.ChoreID == nil || *inst.ChoreID != id {
+			continue
+		}
+		startAt, endAt, dur, err := d.templateTimesLocked(&updated, inst.DueDate)
+		if err != nil {
+			continue
+		}
+		inst.StartAt, inst.EndAt, inst.DurationMinutes = startAt, endAt, dur
+	}
+
 	d.logLocked(nil, nil, "chore.update", updated.Title)
 	if err := d.generateLocked(time.Now()); err != nil {
 		return Chore{}, err
 	}
-	_ = changedRecurrence
 	if err := d.saveLocked(); err != nil {
 		return Chore{}, err
 	}
 	return updated, nil
 }
 
-// ArchiveChore 软删定义；历史实例保留。
+// matchesRecurrenceDate 判断某个 due_date（YYYY-MM-DD）在新规则下是否还该出现。
+func (d *DB) matchesRecurrenceDate(c *Chore, dueDate string) bool {
+	if c.Recurrence == "none" {
+		return dueDate == c.StartDate
+	}
+	day, err := time.ParseInLocation(dateLayout, dueDate, d.locationLocked())
+	if err != nil {
+		return false
+	}
+	if c.StartDate != "" && dueDate < c.StartDate {
+		return false
+	}
+	return matchesRecurrence(c, day)
+}
+
+// ArchiveChore 删除整条系列（v5）：定义置 archived，**该系列所有实例一并隐藏**，
+// 于是 /api/bootstrap、/api/instances、/api/chores 里都不再出现它们。
+//
+// 为什么级联：用户删掉一个「每天」的任务，期望的是"这个任务没了"，
+// 而不是"定义没了但今天/本月/历史里还留着几十条孤儿实例"。
+// 仍是软删（不物理删）——活动日志与导出还能看出发生过什么。
 func (d *DB) ArchiveChore(id int64) error {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	for i := range d.file.Chores {
-		if d.file.Chores[i].ID == id {
-			d.file.Chores[i].Archived = true
-			d.logLocked(nil, nil, "chore.archive", d.file.Chores[i].Title)
-			return d.saveLocked()
+		if d.file.Chores[i].ID != id {
+			continue
 		}
+		d.file.Chores[i].Archived = true
+		for j := range d.file.Instances {
+			inst := &d.file.Instances[j]
+			if inst.ChoreID != nil && *inst.ChoreID == id {
+				inst.Archived = true
+			}
+		}
+		d.logLocked(nil, nil, "chore.archive", d.file.Chores[i].Title)
+		return d.saveLocked()
 	}
 	return fmt.Errorf("%w: chore %d", ErrNotFound, id)
 }

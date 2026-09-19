@@ -102,6 +102,9 @@ type Instance struct {
 	RequiresPhoto  bool   `json:"requires_photo"`
 	CreatedBy      *int64 `json:"created_by"`
 	CreatedAt      string `json:"created_at"`
+	// Archived 标记"已删除"：删除某条实例、或删除其所属定义时置位。
+	// 不物理删除——历史活动日志仍然指向它，导出也能看到发生了什么。
+	Archived bool `json:"archived,omitempty"`
 	// v2：任务时间（RFC3339 UTC）。老数据为空 → 视图里是 null。
 	StartAt         string `json:"start_at,omitempty"`
 	EndAt           string `json:"end_at,omitempty"`

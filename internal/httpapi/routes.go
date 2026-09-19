@@ -29,6 +29,9 @@ func (a *API) Register(mux *http.ServeMux) {
 		"POST /api/instances/{id}/complete":   a.postComplete,
 		"POST /api/instances/{id}/uncomplete": a.postUncomplete,
 		"POST /api/instances/{id}/reschedule": a.postReschedule,
+		// v5：单条实例的编辑/删除（前端"更多 → 编辑/删除"）
+		"PATCH /api/instances/{id}":  a.patchInstance,
+		"DELETE /api/instances/{id}": a.deleteInstance,
 		// 管理面
 		"POST /api/admin/login":  a.postAdminLogin,
 		"POST /api/admin/logout": a.postAdminLogout,

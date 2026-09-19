@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"strconv"
@@ -11,7 +12,8 @@ import (
 	"chores/internal/store"
 )
 
-// 本文件是契约 v2 的 HTTP 增量：
+// 本文件是契约 v2/v5 的 HTTP 增量：
+//   0. 单条实例的编辑/删除（PATCH/DELETE /api/instances/{id}）
 //   1. 分组 / 成员的"不需要管理员"路径（老 /api/admin/* 保留可用）
 //   2. 三选二的时间字段解析（解析失败 → 400）
 //   3. 头像上传 / 读取 / 清空
@@ -370,3 +372,68 @@ func (a *API) memberView(m store.Member) memberView {
 
 var _ = errors.Is
 var _ = strconv.Itoa
+
+// ---- v5：单条实例的编辑与删除（前端"更多 → 编辑/删除"打这两条） ----
+
+// patchInstanceRequest 是 PATCH /api/instances/{id} 的请求体。
+// 时间三个字段用 json.RawMessage 以便区分"没给"与"显式 null"。
+type patchInstanceRequest struct {
+	Title    *string         `json:"title"`
+	Note     *string         `json:"note"`
+	GroupID  *int64          `json:"group_id"`
+	StartAt  json.RawMessage `json:"start_at"`
+	EndAt    json.RawMessage `json:"end_at"`
+	Duration json.RawMessage `json:"duration_minutes"`
+}
+
+// patchInstance 只改这一条实例，不动它所属的定义。
+func (a *API) patchInstance(w http.ResponseWriter, r *http.Request) {
+	if _, ok := a.requireMember(w, r); !ok {
+		return
+	}
+	id, err := pathID(r)
+	if err != nil {
+		writeDomainError(w, err, nil)
+		return
+	}
+	var body patchInstanceRequest
+	if err := decodeJSON(r, &body); err != nil {
+		writeDomainError(w, err, nil)
+		return
+	}
+	_, start, end, dur, err := store.ParseTimeFields(body.StartAt, body.EndAt, body.Duration, a.loc)
+	if err != nil {
+		writeDomainError(w, err, nil)
+		return
+	}
+	inst, err := a.deps.Store.UpdateInstance(id, store.UpdateInstanceInput{
+		Title:           body.Title,
+		Note:            body.Note,
+		GroupID:         body.GroupID,
+		StartAt:         start,
+		EndAt:           end,
+		DurationMinutes: dur,
+	})
+	if err != nil {
+		writeDomainError(w, err, nil)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"instance": a.instanceView(inst)})
+}
+
+// deleteInstance 只删这一条（幂等：删两次都 200）。
+func (a *API) deleteInstance(w http.ResponseWriter, r *http.Request) {
+	if _, ok := a.requireMember(w, r); !ok {
+		return
+	}
+	id, err := pathID(r)
+	if err != nil {
+		writeDomainError(w, err, nil)
+		return
+	}
+	if err := a.deps.Store.DeleteInstance(id); err != nil {
+		writeDomainError(w, err, nil)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"result": map[string]any{"deleted": true}})
+}
