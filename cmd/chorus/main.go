@@ -16,7 +16,7 @@ import (
 	"chores/internal/config"
 	"chores/internal/httpapi"
 	"chores/internal/store"
-	"chores/web"
+	"chores/app"
 )
 
 // version 由构建时 -ldflags 注入。
@@ -55,7 +55,7 @@ func main() {
 		_ = json.NewEncoder(w).Encode(map[string]any{"ok": true, "version": version})
 	})
 	api.Register(mux)
-	if err := mountWeb(mux, web.FS()); err != nil {
+	if err := mountWeb(mux, app.FS()); err != nil {
 		log.Fatalf("chores: mount web: %v", err)
 	}
 

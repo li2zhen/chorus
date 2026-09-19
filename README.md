@@ -63,39 +63,25 @@ services:
 
 ---
 
-## 东西都在哪
+## 源码长什么样
 
 ```
-cmd/chorus/          入口：路由、内嵌前端、/health
-internal/store/      数据层：成员 / 分组 / 任务 / 实例 / 日志 / 循环生成
+app/                 前端资源（index.html + app.js + app.css + icon.svg），go:embed 进二进制
+cmd/chorus/          入口：路由、静态资源、SPA 回落、/health
+internal/store/      数据层：成员 / 分组 / 任务定义 / 实例 / 活动日志 / 循环生成
 internal/httpapi/    REST 接口、Cookie 登录、导入导出
-web/                 index.html + app.js + app.css（go:embed 进二进制）
-api/CONTRACT.md      接口契约
-api/DESIGN.md        设计规范和页面规格
-test/ACCEPTANCE.md   验收清单
-docker-compose.yml   dev / prod / prod-check 三个 profile
+deploy/Dockerfile    生产镜像（多阶段构建，给从源码构建的人）
+docker-compose.yml   拿现成镜像跑起来的那份
+docs/                更新记录与部署手册
 ```
 
-开发也跑在容器里，宿主只要 Docker（不用装 Go）：
+想自己构建镜像（宿主机不用装 Go）：
 
 ```bash
-git clone https://github.com/li2zhen/chorus.git && cd chorus
-docker compose --profile dev up -d --build    # 改代码约 2 秒自动重编重启
+docker build -f deploy/Dockerfile --target runtime -t chorus:local .
 ```
 
-配置只有四个环境变量：
-
-| 变量 | 默认 |
-|---|---|
-| `CHORUS_ADDR` | `:2022` |
-| `CHORUS_DB` | `/data/chorus.db` |
-| `CHORUS_ADMIN_TOKEN` | `admin`（compose 里是 0317，记得改） |
-| `TZ` | `Asia/Shanghai` |
-
-（老名字 `CHORES_*` 仍然认，优先读 `CHORUS_*`。）
-
----
-
+`dev/` 是本地开发目录，**不在仓库里**：里面有热重载用的 compose、Go 工具链包、接口契约、验收脚本。项目的接口契约与验收记录也随之放在那里，不随用户下载的代码发布。
 ## 备份
 
 整个数据库就是一个文件。

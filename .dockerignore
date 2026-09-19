@@ -1,6 +1,8 @@
-data/
-.air/
+# 构建上下文里不需要的东西（dev/vendor 例外——生产镜像要它来装 Go 工具链）
+/dev/api/
+/dev/test/
+/dev/scripts/
+/dev/data/
 .git/
-test/_out.txt
-test/_err.txt
+data/
 *.log

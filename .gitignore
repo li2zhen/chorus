@@ -1,14 +1,7 @@
-# 运行时数据（一个文件就是全部数据，绝不入库）
+# 本地开发用的东西：不进仓库（用户只需要镜像或源码）
+/dev/
 /data/
 
-# 构建/开发产物
-.air/
-*.log
-
-# Go 工具链包（约 75 MB，按 README 的「离线构建」一节单独下载）
-/vendor/go.linux-amd64.tar.gz
-
-# 编辑器 / 系统
 .DS_Store
 Thumbs.db
 .idea/

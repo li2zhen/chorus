@@ -1,84 +1,24 @@
-# 本项目**唯一**的 docker 入口，所有东西都待在 D:\docker\chorus 里：
-#   ./            本项目入口（compose / Dockerfile / 脚本 / go.mod）
-#   ./web         前端（原生 ES 模块 + 一份 CSS，零构建）
-#   ./internal    Go 后端
-#   ./api         冻结的接口契约（CONTRACT.md）与设计规范（DESIGN.md）
-#   ./vendor      Go 工具链 tar 包（离线构建用，见 README）
-#   ./data        运行时 SQLite（挂载进去，git 忽略）
-#   ./test        冒烟测试与验收脚本
-# 用法：
-#   docker compose --profile dev up -d --build     # 开发：热重载，127.0.0.1:2022
-#   docker compose --profile prod up -d --build    # 生产：极小镜像，0.0.0.0:2022
-#   docker compose --profile dev down              # 停
-#   docker compose --profile dev down -v --rmi local   # 停并删干净（含卷）
-name: chorus
-
+# Chorus —— 拿 Docker Hub 上的现成镜像跑起来。
+#
+#   docker compose up -d          启动，浏览器打开 http://localhost:2022
+#   docker compose logs -f        看日志
+#   docker compose down           停止（数据留在 chorus-data 卷里）
+#   docker compose down -v        停止并删除数据
+#
+# 第一次打开还没有成员：点「管理」，用下面的 CHORUS_ADMIN_TOKEN 进 /admin 把家里人加进去。
+# 想先看看长什么样：/admin 里点「写入演示数据」，看完点「清空数据」。
 services:
-  dev:
-    profiles: ["dev"]
-    build:
-      context: .
-      dockerfile: Dockerfile.dev
-    container_name: chorus-dev
-    restart: unless-stopped
-    working_dir: /app
-    command: ["bash", "scripts/dev-watch.sh"]
-    ports:
-      - "127.0.0.1:2022:2022"
-    environment:
-      CHORUS_ADDR: ":2022"
-      CHORUS_DB: "/data/chorus.db"
-      CHORUS_ADMIN_TOKEN: "0317"
-      TZ: "Asia/Shanghai"
-    volumes:
-      - .:/app
-      - go-build-cache:/go-cache
-      - go-mod-cache:/go/pkg/mod
-      - ./data:/data
-
-  prod:
-    profiles: ["prod"]
-    build:
-      context: .
-      dockerfile: Dockerfile
-      target: runtime
-    image: chorus:local
+  chorus:
+    image: li2zhen/chorus:latest
     container_name: chorus
     restart: unless-stopped
     ports:
-      - "0.0.0.0:2022:2022"
-    environment:
-      CHORUS_ADDR: ":2022"
-      CHORUS_DB: "/data/chorus.db"
-      CHORUS_ADMIN_TOKEN: "0317"
-      TZ: "Asia/Shanghai"
+      - "2022:2022"
     volumes:
-      # 生产用命名卷（首次创建会继承镜像里 /data 的属主，非 root 用户可写）。
-      # 想直接用宿主目录的话，见 README「生产模式的数据目录」一节。
-      - prod-data:/data
-
-  # 只想快速验证生产镜像时用这个：跑在 127.0.0.1:2023，可以和 dev 同时开。
-  prod-check:
-    profiles: ["prod-check"]
-    build:
-      context: .
-      dockerfile: Dockerfile
-      target: runtime
-    image: chorus:local
-    container_name: chorus-prod-check
-    restart: "no"
-    ports:
-      - "127.0.0.1:2023:2022"
+      - chorus-data:/data
     environment:
-      CHORUS_ADDR: ":2022"
-      CHORUS_DB: "/data/chorus.db"
-      CHORUS_ADMIN_TOKEN: "0317"
-      TZ: "Asia/Shanghai"
-    volumes:
-      - prod-check-data:/data
+      - CHORUS_ADMIN_TOKEN=0317        # ← 改成你自己的口令
+      - TZ=Asia/Shanghai
 
 volumes:
-  go-build-cache:
-  go-mod-cache:
-  prod-data:
-  prod-check-data:
+  chorus-data:
