@@ -1,3 +1,15 @@
+# 运行时数据（一个文件就是全部数据，绝不入库）
+/data/
+
+# 构建/开发产物
 .air/
-data/
 *.log
+
+# Go 工具链包（约 75 MB，按 README 的「离线构建」一节单独下载）
+/vendor/go.linux-amd64.tar.gz
+
+# 编辑器 / 系统
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
