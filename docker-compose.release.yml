@@ -1,0 +1,13 @@
+# 用 Docker Hub 上现成镜像的最小 compose（仓库里 docker-compose.yml 是开发用的）
+services:
+  chorus:
+    image: li2zhen/chorus:latest
+    container_name: chorus
+    restart: unless-stopped
+    ports:
+      - "2022:2022"
+    volumes:
+      - ./data:/data
+    environment:
+      - CHORUS_ADMIN_TOKEN=0317
+      - TZ=Asia/Shanghai
