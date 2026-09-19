@@ -58,6 +58,9 @@ func (a *API) Register(mux *http.ServeMux) {
 		"GET /api/admin/export":          a.getAdminExport,
 		"POST /api/admin/seed":           a.postAdminSeed,
 		"POST /api/admin/reset":          a.postAdminReset,
+		// v4：管理页打的就是这两条（此前缺失 → 404 提示"接口不存在"）；与成员入口同一实现。
+		"PUT /api/admin/members/{id}/avatar":    a.putAdminMemberAvatar,
+		"DELETE /api/admin/members/{id}/avatar": a.deleteAdminMemberAvatar,
 	}
 	for pattern, handler := range routes {
 		mux.Handle(pattern, withCORS(http.HandlerFunc(handler)))

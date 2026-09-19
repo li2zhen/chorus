@@ -13,10 +13,10 @@ import (
 	"strings"
 	"time"
 
+	"chores/app"
 	"chores/internal/config"
 	"chores/internal/httpapi"
 	"chores/internal/store"
-	"chores/app"
 )
 
 // version 由构建时 -ldflags 注入。
@@ -67,7 +67,7 @@ func main() {
 	if adminToken == "admin" {
 		log.Printf("chores: 提示：CHORES_ADMIN_TOKEN 仍是默认值 admin，上线前请改")
 	}
-	log.Printf("chores %s listening on %s (db=%s tz=%s)", version, addr, dbPath, loc)
+	log.Printf("chorus %s listening on %s (db=%s tz=%s)", version, addr, dbPath, loc)
 	if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		log.Fatalf("chores: %v", err)
 	}

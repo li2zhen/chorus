@@ -1,0 +1,23 @@
+# 强制 LF：Windows 上 core.autocrlf=true 会把 Go 文件 checkout 成 CRLF，
+# 导致 gofmt -l 非空、CI 变红。这里把仓库里需要 LF 的文本类型全部钉死。
+* text=auto eol=lf
+
+*.go    text eol=lf
+*.mjs   text eol=lf
+*.js    text eol=lf
+*.css   text eol=lf
+*.html  text eol=lf
+*.md    text eol=lf
+*.yml   text eol=lf
+*.yaml  text eol=lf
+*.sh    text eol=lf
+Dockerfile*  text eol=lf
+
+# 二进制：不要做任何行尾转换
+*.png   binary
+*.jpg   binary
+*.jpeg  binary
+*.webp  binary
+*.gif   binary
+*.ico   binary
+*.gz    binary

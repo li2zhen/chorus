@@ -8,6 +8,7 @@ const state = {
   dayCursor: null, // 'YYYY-MM-DD'，null = 今天
   monthCursor: null, // 'YYYY-MM'，null = 本月
   yearCursor: null, // 'YYYY'，null = 本年
+  theme: readStoredTheme(), // 'system' | 'light' | 'dark'
   me: null,
   members: [],
   groups: [],
@@ -34,6 +35,51 @@ const RECURRENCE = [
 const DEFAULT_MINUTES = 10
 const app = document.getElementById('app')
 
+/* ── 外观：跟随系统 / 浅色 / 深色 ─────────────────────── */
+const THEME_KEY = 'chorus-theme'
+const THEME_ORDER = ['system', 'light', 'dark']
+const THEME_LABEL = { system: '跟随系统', light: '浅色', dark: '深色' }
+const SUN_SVG = '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="4.2"/><path d="M12 3.5v2M12 18.5v2M3.5 12h2M18.5 12h2M6 6l1.4 1.4M16.6 16.6L18 18M18 6l-1.4 1.4M7.4 16.6L6 18"/></svg>'
+const MOON_SVG = '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 14.5A8.5 8.5 0 0 1 9.5 4a8.5 8.5 0 1 0 10.5 10.5Z"/></svg>'
+
+function readStoredTheme() {
+  try {
+    const v = localStorage.getItem(THEME_KEY)
+    return THEME_ORDER.includes(v) ? v : 'system'
+  } catch { return 'system' }
+}
+
+/** 写 data-theme：system 时移除属性，让 CSS 的 prefers-color-scheme 生效。 */
+function applyTheme() {
+  const rootEl = document.documentElement
+  if (!rootEl) return
+  if (state.theme === 'system') {
+    if (typeof rootEl.removeAttribute === 'function') rootEl.removeAttribute('data-theme')
+    else if (rootEl.dataset) delete rootEl.dataset.theme
+    return
+  }
+  if (rootEl.dataset) rootEl.dataset.theme = state.theme
+  else if (typeof rootEl.setAttribute === 'function') rootEl.setAttribute('data-theme', state.theme)
+}
+
+function cycleTheme() {
+  state.theme = THEME_ORDER[(THEME_ORDER.indexOf(state.theme) + 1) % THEME_ORDER.length]
+  try { localStorage.setItem(THEME_KEY, state.theme) } catch {}
+  applyTheme()
+  render()
+}
+
+/** 左下角固定按钮：只放图标，点一下换下一态（title 里带当前态）。 */
+function themeButton() {
+  const btn = el('button', {
+    class: 'theme-btn', type: 'button', 'data-theme-mode': state.theme,
+    title: '外观：' + THEME_LABEL[state.theme] + '（点击切换）',
+    'aria-label': '外观：' + THEME_LABEL[state.theme],
+  }, [el('span', { class: 'theme-icon', html: state.theme === 'dark' ? MOON_SVG : SUN_SVG })])
+  btn.addEventListener('click', cycleTheme)
+  return btn
+}
+
 /* ── 基础设施 ─────────────────────────────────────────── */
 async function api(path, options = {}) {
   const res = await fetch('/api' + path, {
@@ -57,6 +103,7 @@ function el(tag, attrs = {}, children = []) {
   for (const [k, v] of Object.entries(attrs)) {
     if (k === 'class') node.className = v
     else if (k === 'text') node.textContent = v
+    else if (k === 'html') node.innerHTML = v
     else if (k === 'style') node.setAttribute('style', v)
     else if (k.startsWith('on')) node.addEventListener(k.slice(2).toLowerCase(), v)
     else if (v !== false && v != null) node.setAttribute(k, v === true ? '' : v)
@@ -163,19 +210,16 @@ async function shrinkToBase64(file) {
   return { content_type: 'image/jpeg', data_base64: comma >= 0 ? String(out).slice(comma + 1) : String(out) }
 }
 
+/**
+ * 上传成员头像。
+ * base 由调用方**显式写死**：/admin 页传 '/admin/members'（管理员 Cookie），主应用传 '/members'（成员 Cookie）。
+ * 这里刻意不做"先试 A 再回落 B"——404/401 混在一起会造成静默失败（管理页那次就是这么坏的）。
+ */
 async function uploadAvatar(member, file, base) {
   try {
     const payload = await shrinkToBase64(file)
-    // base 由调用方决定：/admin 页传 '/admin/members'（管理员 Cookie）；主应用不传 → 成员路由。
-    const path = (base || '/members') + '/' + member.id + '/avatar'
-    try {
-      await api(path, { method: 'PUT', body: JSON.stringify(payload) })
-    } catch (e) {
-      // 只在主应用（成员 Cookie）且老后端没有成员路由时才回落。
-      // 401 不能被当成「后端没有这条路由」——那正是管理页静默失败的根因。
-      if (base || (e.status !== 404 && e.status !== 405)) throw e
-      await api('/admin/members/' + member.id + '/avatar', { method: 'PUT', body: JSON.stringify(payload) })
-    }
+    const rootPath = base || '/members'
+    await api(rootPath + '/' + member.id + '/avatar', { method: 'PUT', body: JSON.stringify(payload) })
     const m = memberById(member.id)
     if (m) m.avatar_url = '/api/avatars/' + member.id + '?v=' + Date.now()
     toast('已更新头像')
@@ -260,8 +304,9 @@ function renderLogin() {
               el('span', { class: 'person-name', text: m.name }),
             ])
           ))
-        : el('div', { class: 'empty', text: '还没有成员' }),
+        : el('div', { class: 'empty', text: '还没有成员 · 先到管理页添加' }),
       el('a', { class: 'footlink', href: '/admin', text: '管理' }),
+      themeButton(),
     ])
   )
 }
@@ -413,8 +458,16 @@ function renderToday() {
     for (const inst of bucket.items) list.append(renderRow(inst))
   }
   const scope = key === todayKey() ? '今天' : key
+  const isToday = key === todayKey()
   wrap.append(
-    arrowRow(dayNavLabel(), () => stepDay(-1), () => stepDay(1), () => { state.dayCursor = null; render() }, null),
+    arrowRow(
+      dayNavLabel(),
+      () => stepDay(-1),
+      () => stepDay(1),
+      () => goToDay(todayKey()),
+      isToday ? null : '今天',
+      { type: 'date', value: key, onPick: goToDay },
+    ),
     list,
     statsBar(items, scope),
   )
@@ -447,7 +500,14 @@ function renderMonth() {
   const gridStart = addDays(dateKey(first), -lead)
   const monthLabelText = base.getFullYear() + '年' + (base.getMonth() + 1) + '月'
   const wrap = el('div', {})
-  wrap.append(arrowRow(monthLabelText, () => stepMonth(-1), () => stepMonth(1), () => { state.monthCursor = null; render() }, '今天'))
+  wrap.append(arrowRow(
+    monthLabelText,
+    () => stepMonth(-1),
+    () => stepMonth(1),
+    () => goToMonth(currentMonthKey()),
+    '今天',
+    { type: 'month', value: activeMonthKey(), onPick: goToMonth },
+  ))
   wrap.append(el('div', { class: 'cal-head' }, WEEK_SHORT.map((w) => el('span', { text: w }))))
   const grid = el('div', { class: 'cal month' })
   for (let i = 0; i < 42; i++) {
@@ -511,7 +571,15 @@ function miniMonth(year, monthIndex) {
 function renderYear() {
   const year = yearActive()
   const wrap = el('div', { class: 'year' })
-  wrap.append(arrowRow(year + ' 年', () => stepYear(-1), () => stepYear(1), () => { state.yearCursor = null; render() }, null))
+  const thisYear = fromKey(todayKey()).getFullYear()
+  wrap.append(arrowRow(
+    year + ' 年',
+    () => stepYear(-1),
+    () => stepYear(1),
+    () => goToYear(thisYear),
+    year === thisYear ? null : '今年',
+    { type: 'number', value: String(year), onPick: goToYear },
+  ))
   const grid = el('div', { class: 'year-grid' })
   for (let m = 0; m < 12; m++) grid.append(miniMonth(year, m))
   wrap.append(grid)
@@ -598,9 +666,11 @@ function renderShell() {
     : state.view === 'members' ? renderMembers()
     : renderToday()
 
-  const memberBtn = me
-    ? el('button', { class: 'member-btn', type: 'button', title: '换人', onclick: openMemberSwitch }, [
-        avatar(me),
+  // 还没选成员（或后端没返回 me）时，用第一个成员作为默认身份显示，避免空白头像。
+  const shown = me || state.members[0] || null
+  const memberBtn = shown
+    ? el('button', { class: 'member-btn', type: 'button', title: me ? '换人' : '选择身份', onclick: openMemberSwitch }, [
+        avatar(shown),
         el('span', { class: 'chev', text: '▾' }),
       ])
     : el('span')
@@ -627,6 +697,7 @@ function renderShell() {
       })
     )),
     el('button', { class: 'fab', type: 'button', title: '发布任务', text: '+', onclick: openCompose }),
+    themeButton(),
   )
   bindSwipe(app)
 }
@@ -947,6 +1018,7 @@ function renderAdmin() {
   ])
   adminCard.append(delRow)
   wrap.append(adminCard)
+  wrap.append(themeButton())
   app.replaceChildren(wrap)
 }
 
@@ -955,6 +1027,7 @@ function isTv() { return new URLSearchParams(location.search).get('tv') === '1' 
 function isAdmin() { return location.pathname.replace(/\/+$/, '') === '/admin' }
 
 function render() {
+  applyTheme()
   if (isAdmin()) return renderAdmin()
   if (isTv()) return renderTv()
   if (!state.me) return renderLogin()
@@ -994,34 +1067,78 @@ async function ensureRange(fromKeyStr, toKeyStr) {
   }
 }
 
-function stepDay(delta) {
-  const next = addDays(dayKeyActive(), delta)
-  state.dayCursor = next === todayKey() ? null : next
+/** 跳到某一天（也用于箭头 / 滑动 / 日期自选控件）。 */
+function goToDay(key) {
+  const d = fromKey(key)
+  if (!d || Number.isNaN(d.getTime())) return
+  state.view = 'today'
+  state.dayCursor = key === todayKey() ? null : key
   render()
-  void ensureRange(next, next)
+  void ensureRange(key, key)
 }
 
-function stepMonth(delta) {
-  const base = fromKey(activeMonthKey() + '-01')
-  const d = new Date(base.getFullYear(), base.getMonth() + delta, 1)
-  const key = dateKey(d).slice(0, 7)
+/** 跳到某个月（'YYYY-MM'）。 */
+function goToMonth(key) {
+  if (!/^\d{4}-\d{2}$/.test(String(key))) return
+  state.view = 'month'
   state.monthCursor = key === currentMonthKey() ? null : key
   render()
+  const d = fromKey(key + '-01')
   void ensureRange(key + '-01', dateKey(new Date(d.getFullYear(), d.getMonth() + 1, 0)))
 }
 
-function stepYear(delta) {
-  const y = yearActive() + delta
+/** 跳到某一年。 */
+function goToYear(year) {
+  const y = Number(year)
+  if (!Number.isInteger(y) || y < 1900 || y > 2100) return
+  state.view = 'year'
   state.yearCursor = y === fromKey(todayKey()).getFullYear() ? null : y
   render()
   void ensureRange(y + '-01-01', y + '-12-31')
 }
 
-/** 标题行：‹ 标题 ›，标题可点回今天/本月/本年。 */
-function arrowRow(title, onPrev, onNext, onTitle, todayLabel) {
+function stepDay(delta) { goToDay(addDays(dayKeyActive(), delta)) }
+
+function stepMonth(delta) {
+  const base = fromKey(activeMonthKey() + '-01')
+  const d = new Date(base.getFullYear(), base.getMonth() + delta, 1)
+  goToMonth(dateKey(d).slice(0, 7))
+}
+
+function stepYear(delta) { goToYear(yearActive() + delta) }
+
+/**
+ * 标题行：‹ 标题 今天 ›
+ * - 有 picker 时，点标题换成原生自选控件（date / month / number），选完或回车立即跳转并收起；
+ * - 没有 picker 时，点标题执行 onTitle（回到今天/本月/本年）。
+ * picker: { type: 'date'|'month'|'number', value: string, onPick: (v: string) => void }
+ */
+function arrowRow(title, onPrev, onNext, onTitle, todayLabel, picker) {
+  const titleBtn = el('button', { class: 'nav-title', type: 'button', title: picker ? '选择' : '回到今天', text: title })
+  let input = null
+  if (picker) {
+    const attrs = { class: 'nav-input hidden', type: picker.type, 'data-picker': picker.type, value: picker.value }
+    if (picker.type === 'number') { attrs.min = '1900'; attrs.max = '2100'; attrs.inputmode = 'numeric' }
+    input = el('input', attrs)
+    const commit = () => { if (input.value) picker.onPick(String(input.value)) }
+    const restore = () => { input.classList.add('hidden'); titleBtn.classList.remove('hidden') }
+    input.addEventListener('change', () => { commit() })
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') commit()
+      if (e.key === 'Escape') restore()
+    })
+    input.addEventListener('blur', restore)
+  }
+  titleBtn.addEventListener('click', () => {
+    if (!picker || !input) { onTitle(); return }
+    titleBtn.classList.add('hidden')
+    input.classList.remove('hidden')
+    if (typeof input.focus === 'function') input.focus()
+  })
   return el('div', { class: 'navrow' }, [
     el('button', { class: 'navbtn', type: 'button', 'aria-label': '上一个', 'data-nav': 'prev', text: '‹', onclick: onPrev }),
-    el('button', { class: 'nav-title', type: 'button', title: '回到今天', text: title, onclick: onTitle }),
+    titleBtn,
+    input,
     todayLabel ? el('button', { class: 'nav-today', type: 'button', text: todayLabel, onclick: onTitle }) : null,
     el('button', { class: 'navbtn', type: 'button', 'aria-label': '下一个', 'data-nav': 'next', text: '›', onclick: onNext }),
   ])

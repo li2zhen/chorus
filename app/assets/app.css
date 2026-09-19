@@ -17,14 +17,28 @@
   --font:-apple-system,BlinkMacSystemFont,"SF Pro Text","PingFang SC","Microsoft YaHei",Inter,sans-serif;
 }
 
+/* 深色变量：默认跟随系统（:root:not([data-theme])），
+   显式选深色时用 html[data-theme="dark"] 覆盖；显式选浅色时属性存在 → 上面那条 media 不再命中。 */
 @media (prefers-color-scheme: dark){
-  :root{
+  :root:not([data-theme]){
     --bg:#000000; --surface:#1C1C1E; --surface-2:#2C2C2E;
     --text:#F5F5F7; --text-2:#98989D; --text-3:#636366;
     --line:#2C2C2E; --line-strong:#3A3A3C;
     --shadow-float:0 8px 30px rgba(0,0,0,.5);
   }
 }
+
+html[data-theme="dark"]{
+  --bg:#000000; --surface:#1C1C1E; --surface-2:#2C2C2E;
+  --text:#F5F5F7; --text-2:#98989D; --text-3:#636366;
+  --line:#2C2C2E; --line-strong:#3A3A3C;
+  --shadow-float:0 8px 30px rgba(0,0,0,.5);
+}
+
+/* 让原生控件（日期/月份/数字选择器、滚动条）跟随主题 */
+:root{color-scheme: light dark}
+html[data-theme="light"]{color-scheme: light}
+html[data-theme="dark"]{color-scheme: dark}
 
 *{box-sizing:border-box}
 html,body{margin:0;height:100%}
@@ -356,4 +370,30 @@ body.tv #app{max-width:none}
 @media (pointer:coarse){ .density-day{width:18px; height:18px} }
 
 /* 鍘绘帀鐨勬棫鍘嗗彶鏃堕棿绾挎牱寮忥紙v3 涓嶅啀鏈夌嫭绔嬨€屽巻鍙层€嶅垎娈碉級 */
+
+
+/* 鈹€鈹€ v4锛氬瑙傚垏鎹紙宸︿笅瑙掑浐瀹氾紝涓夋€侊細璺熼殢绯荤粺 鈫?娴呰壊 鈫?娣辫壊锛?鈹€鈹€ */
+.theme-btn{
+  position:fixed; left:var(--sp-5); bottom:calc(var(--sp-5) + env(safe-area-inset-bottom));
+  width:44px; height:44px; border-radius:var(--r-pill);
+  display:grid; place-items:center; cursor:pointer;
+  background:color-mix(in srgb, var(--surface) 86%, transparent); color:var(--text-2);
+  border:.5px solid var(--line);
+  backdrop-filter:saturate(180%) blur(20px);
+  transition:color var(--dur) var(--ease), transform var(--dur) var(--ease), background var(--dur) var(--ease);
+}
+.theme-btn:hover{color:var(--text); background:var(--surface)}
+.theme-btn:active{transform:scale(.94)}
+.theme-btn[data-theme-mode="dark"]{color:var(--text)}
+.theme-icon{display:grid; place-items:center; line-height:0}
+.theme-icon svg{display:block}
+
+/* 鏍囬閲岀殑鑷€夋帶浠讹紙date / month / number锛?*/
+.nav-input{
+  appearance:none; border:none; background:transparent; color:var(--text); font:inherit;
+  font-size:var(--fs-section); font-weight:var(--fw-section); letter-spacing:-.01em;
+  padding:var(--sp-2); border-radius:var(--r-input); min-height:36px;
+}
+.nav-input:focus{outline:2px solid var(--accent); outline-offset:2px}
+.nav-input[type="number"]{width:96px}
 

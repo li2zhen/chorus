@@ -202,10 +202,25 @@ func (a *API) getAdminMembersCompat(w http.ResponseWriter, r *http.Request) {
 
 // ---- 头像 ----
 
+// putMemberAvatar 与 putAdminMemberAvatar 是同一实现的两个入口：
+// 成员入口要求"任意已登录成员"，管理员入口要求管理员 Cookie。
+// 前端管理页打的是 /api/admin/... 那条（曾经 404，见 v4 修复）。
 func (a *API) putMemberAvatar(w http.ResponseWriter, r *http.Request) {
 	if _, ok := a.requireMember(w, r); !ok {
 		return
 	}
+	a.putAvatar(w, r)
+}
+
+func (a *API) putAdminMemberAvatar(w http.ResponseWriter, r *http.Request) {
+	if !a.requireAdmin(w, r) {
+		return
+	}
+	a.putAvatar(w, r)
+}
+
+// putAvatar 是两条路由共用的实现（不做鉴权，由入口负责）。
+func (a *API) putAvatar(w http.ResponseWriter, r *http.Request) {
 	id, err := pathID(r)
 	if err != nil {
 		writeDomainError(w, err, nil)
@@ -263,6 +278,18 @@ func (a *API) deleteMemberAvatar(w http.ResponseWriter, r *http.Request) {
 	if _, ok := a.requireMember(w, r); !ok {
 		return
 	}
+	a.deleteAvatar(w, r)
+}
+
+func (a *API) deleteAdminMemberAvatar(w http.ResponseWriter, r *http.Request) {
+	if !a.requireAdmin(w, r) {
+		return
+	}
+	a.deleteAvatar(w, r)
+}
+
+// deleteAvatar 是两条路由共用的实现（不做鉴权，由入口负责）。
+func (a *API) deleteAvatar(w http.ResponseWriter, r *http.Request) {
 	id, err := pathID(r)
 	if err != nil {
 		writeDomainError(w, err, nil)
