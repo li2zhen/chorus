@@ -1,5 +1,7 @@
 # Chorus · 家务认领板
 
+[![build](https://github.com/li2zhen/chorus/actions/workflows/build.yml/badge.svg)](https://github.com/li2zhen/chorus/actions/workflows/build.yml) [![license](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE) [![image](https://img.shields.io/badge/docker-li2zhen%2Fchorus-2496ED.svg)](https://hub.docker.com/r/li2zhen/chorus)
+
 > 家里的事，谁认领谁负责。一个单文件、单容器、零依赖的家庭任务板。
 
 Chorus 只做一件事：**把家务发布到池子里，谁有空谁认领，做完留痕。**
@@ -19,9 +21,19 @@ Chorus 只做一件事：**把家务发布到池子里，谁有空谁认领，�
 ## 快速开始
 
 ```bash
-git clone https://github.com/<你的账号>/chorus.git && cd chorus
-docker compose --profile prod up -d --build     # 生产模式，镜像约 24 MB
-# 打开 http://localhost:2022
+# 方式一：直接用现成镜像（最快，镜像约 24 MB）
+docker run -d --name chorus --restart unless-stopped \
+  -p 2022:2022 \
+  -v chorus-data:/data \
+  -e CHORUS_ADMIN_TOKEN=改成你自己的口令 \
+  -e TZ=Asia/Shanghai \
+  li2zhen/chorus:latest
+
+# 方式二：从源码构建（宿主机不需要装 Go）
+git clone https://github.com/li2zhen/chorus.git && cd chorus
+docker compose --profile prod up -d --build
+
+# 都打开：http://localhost:2022
 ```
 
 首次打开是登录页但还没有成员：点左下角**管理** → 用管理员口令进 `/admin` → 添加家庭成员 → 回首页点头像进入。
@@ -109,7 +121,7 @@ docker run --rm -v chorus_prod-data:/data -v "$PWD:/out" alpine cp /data/chorus.
 ```yaml
 services:
   chorus:
-    image: <你的dockerhub账号>/chorus:latest
+    image: li2zhen/chorus:latest
     container_name: chorus
     restart: unless-stopped
     ports:
